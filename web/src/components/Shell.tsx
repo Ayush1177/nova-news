@@ -1,5 +1,6 @@
 "use client";
 
+import { AuthButton } from "@/components/AuthButton";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Newspaper, Sparkles, User } from "lucide-react";
@@ -31,7 +32,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </motion.aside>
 
       {/* Main */}
-      <div className="space-y-6">{children}</div>
+<div className="space-y-6">
+  <div className="flex items-center justify-between">
+    <div className="text-xs text-white/60">
+      Signal-first news + creator posts. Auth now enabled.
+    </div>
+
+    <AuthButton />
+  </div>
+
+  {children}
+</div>
     </div>
   );
 }
