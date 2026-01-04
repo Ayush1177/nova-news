@@ -1,10 +1,10 @@
 import { Shell } from "@/components/Shell";
-import { FeedMock } from "@/components/FeedMock";
+import { Feed } from "@/components/Feed";
 
 export default function Home() {
   return (
     <Shell>
-      <FeedMock />
+      <Feed />
     </Shell>
   );
 }
