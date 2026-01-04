@@ -2,23 +2,28 @@
 
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
+import { useSession, signIn } from "next-auth/react";
 import { TiltCard } from "@/components/TiltCard";
 
-type Post = {
+type ApiPost = {
   id: string;
-  author: string;
   title: string | null;
   content: string;
   createdAt: string;
+  author: {
+    id: string;
+    name: string | null;
+    image: string | null;
+  };
 };
 
-async function fetchPosts(): Promise<Post[]> {
+async function fetchPosts(): Promise<ApiPost[]> {
   const res = await fetch("/api/posts", { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to load posts");
   return res.json();
 }
 
-async function createPost(payload: { author?: string; title?: string; content: string }): Promise<Post> {
+async function createPost(payload: { title?: string; content: string }): Promise<ApiPost> {
   const res = await fetch("/api/posts", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -47,12 +52,21 @@ function timeAgo(iso: string) {
   return `${day}d ago`;
 }
 
+function initials(name?: string | null) {
+  const n = (name ?? "").trim();
+  if (!n) return "?";
+  const parts = n.split(/\s+/).slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase()).join("") || "?";
+}
+
 export function Feed() {
-  const [author, setAuthor] = useState("ayush");
+  const { data: session, status } = useSession();
+  const isAuthed = status === "authenticated";
+
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
 
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<ApiPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +98,10 @@ export function Feed() {
   const sortedPosts = useMemo(() => posts, [posts]);
 
   async function onSubmit() {
+    if (!isAuthed) {
+      setError("Please sign in to post.");
+      return;
+    }
     if (!content.trim()) {
       setError("Write something first.");
       return;
@@ -92,30 +110,31 @@ export function Feed() {
     setSubmitting(true);
     setError(null);
 
-    // optimistic UI: show immediately
-    const optimistic: Post = {
+    // Optimistic post uses session user info
+    const optimistic: ApiPost = {
       id: `optimistic-${Date.now()}`,
-      author: author.trim() || "anonymous",
       title: title.trim() ? title.trim() : null,
       content: content.trim(),
       createdAt: new Date().toISOString(),
+      author: {
+        id: "me",
+        name: session?.user?.name ?? session?.user?.email ?? "You",
+        image: (session?.user as any)?.image ?? null,
+      },
     };
 
     setPosts((prev) => [optimistic, ...prev]);
 
     try {
       const created = await createPost({
-        author: optimistic.author,
         title: optimistic.title ?? undefined,
         content: optimistic.content,
       });
 
-      // replace optimistic with real db record
       setPosts((prev) => [created, ...prev.filter((p) => p.id !== optimistic.id)]);
       setTitle("");
       setContent("");
     } catch (e: any) {
-      // rollback optimistic
       setPosts((prev) => prev.filter((p) => p.id !== optimistic.id));
       setError(e?.message ?? "Failed to create post");
     } finally {
@@ -127,33 +146,38 @@ export function Feed() {
     <div className="space-y-6">
       {/* Composer */}
       <TiltCard className="p-5">
-        <div className="text-sm text-white/70">Create a post</div>
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-white/70">Create a post</div>
 
-        <div className="mt-3 grid gap-2 md:grid-cols-[160px_1fr]">
-          <input
-            value={author}
-            onChange={(e) => setAuthor(e.target.value)}
-            placeholder="author"
-            className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 outline-none focus:border-white/20"
-          />
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Title (optional)"
-            className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 outline-none focus:border-white/20"
-          />
+          {!isAuthed && (
+            <button
+              onClick={() => signIn("github")}
+              className="rounded-xl bg-white px-3 py-2 text-sm font-medium text-black hover:opacity-90"
+            >
+              Sign in
+            </button>
+          )}
         </div>
+
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Title (optional)"
+          className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 outline-none focus:border-white/20"
+        />
 
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="Write a post…"
+          placeholder={isAuthed ? "Write a post…" : "Sign in to write a post…"}
           rows={4}
           className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 outline-none focus:border-white/20"
         />
 
         <div className="mt-3 flex items-center justify-between">
-          <div className="text-xs text-white/60">Tip: hover cards to feel the tilt.</div>
+          <div className="text-xs text-white/60">
+            {isAuthed ? "Tip: hover cards to feel the tilt." : "Sign in to publish posts."}
+          </div>
 
           <div className="flex gap-2">
             <button
@@ -169,7 +193,7 @@ export function Feed() {
 
             <button
               onClick={onSubmit}
-              disabled={submitting}
+              disabled={!isAuthed || submitting}
               className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:opacity-90 disabled:opacity-50"
             >
               {submitting ? "Posting…" : "Post"}
@@ -185,7 +209,7 @@ export function Feed() {
         {loading && <div className="text-sm text-white/70">Loading posts…</div>}
 
         {!loading && sortedPosts.length === 0 && (
-          <div className="text-sm text-white/70">No posts yet. Create your first post.</div>
+          <div className="text-sm text-white/70">No posts yet.</div>
         )}
 
         {sortedPosts.map((p, idx) => (
@@ -197,15 +221,32 @@ export function Feed() {
           >
             <TiltCard className="p-5">
               <div className="flex items-center justify-between text-xs text-white/60">
-                <span>@{p.author}</span>
+                <div className="flex items-center gap-2">
+                  {/* Avatar */}
+                  {p.author.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.author.image}
+                      alt={p.author.name ?? "user"}
+                      className="h-6 w-6 rounded-full border border-white/10"
+                    />
+                  ) : (
+                    <div className="grid h-6 w-6 place-items-center rounded-full border border-white/10 bg-white/5 text-[10px] text-white/80">
+                      {initials(p.author.name)}
+                    </div>
+                  )}
+
+                  <span className="text-white/70">
+                    @{(p.author.name ?? "user").toLowerCase().replace(/\s+/g, "")}
+                  </span>
+                </div>
+
                 <span>{timeAgo(p.createdAt)}</span>
               </div>
 
-              {p.title && (
-                <div className="mt-2 text-base font-semibold tracking-tight">{p.title}</div>
-              )}
+              {p.title && <div className="mt-2 text-base font-semibold tracking-tight">{p.title}</div>}
 
-              <div className="mt-2 text-sm text-white/80 whitespace-pre-wrap">{p.content}</div>
+              <div className="mt-2 whitespace-pre-wrap text-sm text-white/80">{p.content}</div>
 
               <div className="mt-4 flex gap-2 text-xs text-white/60">
                 <span className="rounded-full border border-white/10 px-3 py-1">Like</span>
