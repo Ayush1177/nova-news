@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { FXLayer } from "@/components/FXLayer";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -16,6 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Background layers */}
         <div className="fixed inset-0 bg-grid opacity-30" />
         <div className="fixed inset-0 bg-gradient-to-b from-indigo-900/20 via-black to-black" />
+        <FXLayer />
 
         {/* Page container */}
         <div className="relative mx-auto w-full max-w-6xl px-4 py-8">
